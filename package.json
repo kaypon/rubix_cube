@@ -1,0 +1,23 @@
+{
+  "name": "rubix_cube",
+  "version": "1.0.0",
+  "description": "A 3D Rubik’s cube solver. Paint your cube, watch it solve.",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc --noEmit && vite build",
+    "preview": "vite preview",
+    "test": "node --experimental-strip-types tests/logic.test.ts"
+  },
+  "type": "module",
+  "dependencies": {
+    "cubejs": "^1.3.2",
+    "three": "^0.187.0"
+  },
+  "devDependencies": {
+    "@types/node": "^26.6.6",
+    "@types/three": "^0.187.0",
+    "typescript": "^7.0.2",
+    "vite": "^8.3.7"
+  },
+  "private": true
+}

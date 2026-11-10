@@ -1,0 +1,86 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="theme-color" content="#f2f2f0" />
+    <title>CUBE — Kevin van der Poll</title>
+    <meta name="description" content="A Rubik's cube you can twist, paint to match yours, and watch solve itself." />
+    <link rel="icon" href="/favicon.ico" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Archivo+Black&display=swap" rel="stylesheet" />
+  </head>
+  <body>
+    <main class="cube-page">
+      <div class="cube-stage" id="stage"></div>
+
+      <header class="cube-top">
+        <a class="cube-back" href="https://kevdotnet.net/kev">[← kev]</a>
+        <h1 class="cube-title"><span class="cube-title__slash">/</span>CUBE</h1>
+      </header>
+
+      <aside class="cube-rail" aria-label="View">
+        <div class="cube-group" role="group" aria-label="Skin">
+          <span class="cube-label">Skin</span>
+          <button type="button" class="cube-btn cube-btn--sm cube-btn--on" data-skin="classic" aria-pressed="true">Classic</button>
+          <button type="button" class="cube-btn cube-btn--sm" data-skin="toon" aria-pressed="false">Toon</button>
+          <button type="button" class="cube-btn cube-btn--sm" data-skin="metal" aria-pressed="false">Metal</button>
+          <button type="button" class="cube-btn cube-btn--sm" data-skin="glass" aria-pressed="false">Glass</button>
+        </div>
+        <div class="cube-group" role="group" aria-label="Halftone screen">
+          <span class="cube-label">Screen</span>
+          <button type="button" class="cube-btn cube-btn--sm cube-btn--on" data-screen="off" aria-pressed="true">Off</button>
+          <button type="button" class="cube-btn cube-btn--sm" data-screen="dots" aria-pressed="false">Dots</button>
+          <button type="button" class="cube-btn cube-btn--sm" data-screen="ink" aria-pressed="false">Ink</button>
+        </div>
+        <div class="cube-group">
+          <button type="button" class="cube-btn cube-btn--sm" id="explode" aria-pressed="false">Explode</button>
+          <button type="button" class="cube-btn cube-btn--sm" id="guide-open" aria-expanded="false" aria-controls="guide">How to solve</button>
+        </div>
+      </aside>
+
+      <aside class="cube-guide" id="guide" aria-labelledby="guide-title" inert>
+        <div class="cube-guide__top">
+          <button type="button" class="cube-guide__close">[× close]</button>
+          <h2 class="cube-guide__title" id="guide-title"><span class="cube-title__slash">/</span>SOLVE</h2>
+          <div class="cube-guide__stage"></div>
+          <p class="cube-guide__moves" aria-hidden="true"></p>
+        </div>
+        <div class="cube-guide__body"></div>
+      </aside>
+
+      <footer class="cube-dock">
+        <p class="cube-hint" id="hint" aria-live="polite">[ DRAG A FACE TO TURN IT ]</p>
+
+        <div class="cube-palette" id="palette" hidden>
+          <div class="cube-swatches" role="radiogroup" aria-label="Paint colour" id="swatches"></div>
+          <button type="button" class="cube-btn cube-btn--sm" id="clear">Clear stickers</button>
+        </div>
+
+        <div class="cube-timeline" id="timeline" hidden>
+          <ol class="cube-moves" id="moves" aria-label="Solution"></ol>
+          <div class="cube-transport">
+            <button type="button" class="cube-btn cube-btn--sm" id="first" aria-label="Back to start">|&lt;</button>
+            <button type="button" class="cube-btn cube-btn--sm" id="prev" aria-label="Previous move">&lt;</button>
+            <button type="button" class="cube-btn cube-btn--sm cube-btn--play" id="play">Play</button>
+            <button type="button" class="cube-btn cube-btn--sm" id="next" aria-label="Next move">&gt;</button>
+            <button type="button" class="cube-btn cube-btn--sm" id="last" aria-label="Jump to solved">&gt;|</button>
+            <label class="cube-slider">
+              <span>Speed</span>
+              <input type="range" id="speed" min="0.4" max="3" step="0.1" value="1" />
+            </label>
+          </div>
+        </div>
+
+        <div class="cube-controls">
+          <button type="button" class="cube-btn" id="scramble">Scramble</button>
+          <button type="button" class="cube-btn" id="paint" aria-pressed="false">Paint</button>
+          <button type="button" class="cube-btn cube-btn--primary" id="solve">Solve</button>
+          <button type="button" class="cube-btn" id="reset">Reset</button>
+        </div>
+      </footer>
+    </main>
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>
