@@ -1,8 +1,10 @@
 import "./style.css";
 import { CubeView, STICKER_HEX, type Screen } from "./cube/CubeView.ts";
 import { checkCube, COLOR_NAMES } from "./cube/facelets.ts";
-import { invertMove, isMove, randomScramble } from "./cube/notation.ts";
+import { invertAlg, invertMove, isMove, randomScramble } from "./cube/notation.ts";
 import { solve, solverReady } from "./solver/client.ts";
+import { decodeFacelets, encodeFacelets } from "./cube/share.ts";
+import { colorsFromFacelets } from "./cube/state.ts";
 import { SKINS, type SkinName } from "./cube/skins.ts";
 import { Guide } from "./guide/guide.ts";
 
@@ -32,16 +34,23 @@ const ui = {
 const DEFAULT_HINT = "[ DRAG A FACE TO TURN IT ]";
 const PAINT_HINT = "[ HOLD YOUR CUBE WHITE ON TOP, GREEN FACING YOU. PAINT WHAT YOU SEE ]";
 
-type Tone = "plain" | "alert" | "win";
+type Tone = "plain" | "alert" | "win" | "raw";
 function hint(text: string, tone: Tone = "plain") {
   ui.hint.textContent = text;
   ui.hint.classList.toggle("cube-hint--alert", tone === "alert");
   ui.hint.classList.toggle("cube-hint--win", tone === "win");
+  ui.hint.classList.toggle("cube-hint--raw", tone === "raw");
 }
 
-// --- solution playback ----------------------------------------------------
+const pretty = (m: string) => m.replace("'", "′");
 
-let solution: { moves: string[]; index: number } | null = null;
+// --- sequence playback ----------------------------------------------------
+//
+// One timeline, two uses: a solution (from here to solved) or a mix (from
+// solved to here, one move at a time, so you can copy it onto a real cube).
+
+type Sequence = { kind: "solve" | "mix"; moves: string[]; index: number; doneHint?: string };
+let solution: Sequence | null = null;
 let playing = false;
 let wasSolved = true;
 let lastQueued: Promise<void> = Promise.resolve();
@@ -69,7 +78,7 @@ function renderTimeline() {
         const b = document.createElement("button");
         b.type = "button";
         b.className = "cube-move";
-        b.textContent = m.replace("'", "′");
+        b.textContent = pretty(m);
         b.setAttribute("aria-label", `Move ${i + 1}: ${m}`);
         b.addEventListener("click", () => jumpTo(i + 1));
         li.append(b);
@@ -84,9 +93,25 @@ function renderTimeline() {
       b.scrollIntoView({ block: "nearest", inline: "center", behavior: "smooth" });
     } else b.removeAttribute("aria-current");
   });
+  ui.moves.setAttribute("aria-label", solution.kind === "mix" ? "Mix" : "Solution");
+  if (solution.kind === "mix") {
+    if (index === moves.length) hint(solution.doneHint ?? `[ MIXED IN ${moves.length} MOVES. NOW SOLVE IT ]`, "win");
+    else if (index === 0)
+      hint(`[ START SOLVED: WHITE ON TOP, GREEN FACING YOU. FIRST MOVE ${pretty(moves[0])}. PRESS > ]`);
+    else hint(`[ ${index} OF ${moves.length} DONE. NEXT ${pretty(moves[index])} ]`);
+    return;
+  }
   if (index === moves.length) hint(`[ ${moves.length} MOVES. DONE ]`, "win");
   else if (index === 0) hint(`[ SOLVED IN ${moves.length} MOVES. PRESS PLAY ]`);
   else hint(`[ MOVE ${index} OF ${moves.length} ]`);
+}
+
+function showSequence(seq: Sequence) {
+  solution = seq;
+  playing = false;
+  ui.timeline.hidden = false;
+  ui.moves.replaceChildren();
+  renderTimeline();
 }
 
 function stepForward(scale = 1): Promise<void> | void {
@@ -135,7 +160,8 @@ view.onMove = (_name, source) => {
   if (source === "drag" && solution) dropSolution();
   const r = checkCube(view.colors());
   const solved = r.ok && r.solved;
-  if (solved && !wasSolved) {
+  // Stepping a mix back to its start lands on solved too; that's no win.
+  if (solved && !wasSolved && solution?.kind !== "mix") {
     view.celebrate();
     if (!solution) hint("[ SOLVED BY HAND ]", "win");
   }
@@ -208,6 +234,60 @@ $("scramble").addEventListener("click", () => {
   moves.forEach((m) => queue(m, 0.45));
 });
 
+// Mix: back to solved and upright, then walk through a scramble move by move.
+let mixToken = 0;
+$("mix").addEventListener("click", async () => {
+  const token = ++mixToken;
+  dropSolution();
+  if (view.paintMode) setPaint(false);
+  hint("[ RESETTING ]");
+  // Solved isn't enough: after an x or y the centers have moved, and the mix
+  // has to start from white on top, green in front.
+  const atHome = view.colors().every((c, i) => c === Math.floor(i / 9));
+  await Promise.all([view.uprightView(), atHome ? null : view.reset()]);
+  if (token !== mixToken) return;
+  wasSolved = true;
+  showSequence({ kind: "mix", moves: randomScramble(20), index: 0 });
+  ui.play.focus({ preventScroll: true });
+});
+
+// Share: the current state as a link. Whoever opens it gets this exact cube.
+$("share").addEventListener("click", async () => {
+  if (view.paintMode) setPaint(false);
+  await lastQueued;
+  const r = checkCube(view.colors());
+  if (!r.ok) {
+    hint(`[ CAN'T SHARE THAT: ${r.reason} ]`, "alert");
+    return;
+  }
+  if (r.solved) {
+    hint("[ NOTHING TO SOLVE YET. MIX IT FIRST ]");
+    return;
+  }
+  const url = new URL(location.pathname, location.origin);
+  url.searchParams.set("cube", encodeFacelets(r.facelets));
+  const link = url.toString();
+  if (navigator.share && matchMedia("(pointer: coarse)").matches) {
+    try {
+      await navigator.share({ title: "Solve this cube", text: "Bet you can't solve this.", url: link });
+      return;
+    } catch (err) {
+      if ((err as Error).name === "AbortError") return;
+    }
+  }
+  // A copy can be refused, or left hanging on a permission prompt; either
+  // way, fall back to showing the link so it can be copied by hand.
+  const copied = await Promise.race([
+    navigator.clipboard?.writeText(link).then(
+      () => true,
+      () => false,
+    ) ?? false,
+    new Promise<false>((r) => setTimeout(() => r(false), 1500)),
+  ]);
+  if (copied) hint("[ LINK COPIED. SEND IT TO SOMEONE ]", "win");
+  else hint(link, "raw");
+});
+
 ui.paint.addEventListener("click", () => setPaint(!view.paintMode));
 
 $("clear").addEventListener("click", () => {
@@ -220,11 +300,12 @@ let solving = false;
 ui.solve.addEventListener("click", async () => {
   if (solving) return;
   if (view.paintMode) setPaint(false);
-  if (solution) {
+  if (solution?.kind === "solve") {
     // Already solved: the moves are waiting. Play is what starts them.
     ui.play.focus();
     return;
   }
+  if (solution) dropSolution();
   solving = true;
   try {
     await lastQueued;
@@ -239,10 +320,7 @@ ui.solve.addEventListener("click", async () => {
     }
     hint("[ THINKING ]");
     const moves = (await solve(r.facelets)).filter(isMove);
-    solution = { moves, index: 0 };
-    ui.timeline.hidden = false;
-    ui.moves.replaceChildren();
-    renderTimeline();
+    showSequence({ kind: "solve", moves, index: 0 });
     ui.play.focus({ preventScroll: true });
   } catch (err) {
     hint("[ THE SOLVER CHOKED ON THAT ONE. CHECK THE COLOURS ]", "alert");
@@ -254,6 +332,8 @@ ui.solve.addEventListener("click", async () => {
 
 $("reset").addEventListener("click", () => {
   dropSolution();
+  mixToken++;
+  view.uprightView();
   view.reset().then(() => renderPalette());
   wasSolved = true;
   hint(view.paintMode ? PAINT_HINT : DEFAULT_HINT);
@@ -361,16 +441,51 @@ window.addEventListener("keydown", (e) => {
     else stepBack();
     return;
   }
+  // Keys follow what you see: U is whatever face is on top right now.
   const face = e.key.length === 1 ? e.key : "";
   const upper = face.toUpperCase();
-  if ("URFDLBMES".includes(upper) && upper) userMove(e.shiftKey ? `${upper}'` : upper);
+  if ("URFDLBMES".includes(upper) && upper) userMove(view.relativeMove(e.shiftKey ? `${upper}'` : upper));
   else if ("xyz".includes(face.toLowerCase()) && face) {
     const r = face.toLowerCase();
-    userMove(e.shiftKey ? `${r}'` : r);
+    userMove(view.relativeMove(e.shiftKey ? `${r}'` : r));
   }
 });
 
+// --- a shared cube (?cube=...) ------------------------------------------------
+
+function openShared(): boolean {
+  const code = new URLSearchParams(location.search).get("cube");
+  if (!code) return false;
+  const facelets = decodeFacelets(code);
+  const r = facelets ? checkCube(colorsFromFacelets(facelets)) : null;
+  if (!facelets || !r?.ok) {
+    hint("[ THAT LINK'S CUBE DOESN'T ADD UP. HERE'S A FRESH ONE ]", "alert");
+    return false;
+  }
+  if (r.solved) return false;
+  view.setColors(colorsFromFacelets(facelets));
+  wasSolved = false;
+  const sharedHint = "[ SOMEONE SENT YOU THIS. SOLVE IT, OR |< TO COPY IT ONTO A REAL CUBE ]";
+  hint("[ SOMEONE SENT YOU THIS. SOLVE IT ]");
+  // The mix that makes it: undo the solver's solution. Only offered if you
+  // haven't started turning by the time it's ready.
+  const untouched = () => {
+    const now = checkCube(view.colors());
+    return now.ok && now.facelets === facelets;
+  };
+  solverReady
+    .then(() => solve(facelets))
+    .then((moves) => {
+      if (solution || view.paintMode || !untouched()) return;
+      const mix = invertAlg(moves.filter(isMove));
+      showSequence({ kind: "mix", moves: mix, index: mix.length, doneHint: sharedHint });
+    })
+    .catch((err) => console.error(err));
+  return true;
+}
+
 // --- go -------------------------------------------------------------------
 
+openShared();
 view.assemble();
 solverReady.catch((err) => console.error("Solver failed to start", err));

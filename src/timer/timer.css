@@ -1,0 +1,323 @@
+/* /timer: same paper, ink and type as /cube, but a page that scrolls. */
+
+.timer-doc,
+.timer-doc body {
+  height: auto;
+  min-height: 100%;
+  overflow: auto;
+}
+
+.timer-page {
+  position: relative;
+  min-height: 100vh;
+  max-width: 72rem;
+  margin: 0 auto;
+  padding: 1.1rem 1.25rem 3rem;
+  display: flex;
+  flex-direction: column;
+  gap: clamp(1.25rem, 3vh, 2rem);
+}
+
+/* Content above the grain (which sits at z-index 2). */
+.timer-page > * {
+  position: relative;
+  z-index: 3;
+  transition: opacity 200ms ease;
+}
+
+/* While the clock runs, everything else steps back. */
+.timer-page--running > :not(.timer-pad) {
+  opacity: 0.07;
+}
+
+.timer-page--running .timer-pad .cube-hint {
+  opacity: 0.5;
+}
+
+/* --- scramble ------------------------------------------------------------ */
+
+.timer-scramble {
+  display: grid;
+  grid-template-columns: 1fr auto auto;
+  align-items: center;
+  gap: 0.75rem 1.5rem;
+  padding: 0.9rem 0;
+  border-top: 1px solid var(--ink);
+  border-bottom: 1px solid var(--ink);
+}
+
+.timer-scramble__moves {
+  margin: 0.35rem 0 0;
+  font-family: var(--terminal);
+  font-weight: 700;
+  font-size: clamp(1.05rem, 2.3vw, 1.5rem);
+  line-height: 1.35;
+  word-spacing: 0.1em;
+  white-space: pre-wrap;
+}
+
+.timer-net svg {
+  display: block;
+  width: clamp(6.5rem, 14vw, 9rem);
+  height: auto;
+}
+
+/* --- the pad ------------------------------------------------------------- */
+
+.timer-pad {
+  min-height: clamp(14rem, 40vh, 24rem);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 1.1rem;
+  cursor: pointer;
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-touch-callout: none;
+  touch-action: none;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.timer-clock {
+  display: flex;
+  font-family: var(--display);
+  font-size: clamp(4.5rem, 19vw, 12rem);
+  line-height: 0.85;
+  color: var(--ink);
+  transition: color 120ms ease;
+}
+
+/* Fixed-width digits, so the number doesn't shuffle about while it runs. */
+.timer-clock .d {
+  display: inline-block;
+  width: 0.64em;
+  text-align: center;
+}
+
+.timer-clock .p {
+  display: inline-block;
+  width: 0.3em;
+  text-align: center;
+}
+
+.timer-pad--holding .timer-clock {
+  color: #b3261e;
+}
+
+.timer-pad--ready .timer-clock {
+  color: #16965a;
+}
+
+.timer-post {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  cursor: default;
+  user-select: auto;
+  -webkit-user-select: auto;
+  touch-action: auto;
+}
+
+.timer-post__label {
+  font-family: var(--terminal);
+  font-weight: 700;
+  font-size: 0.78rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.timer-post__name {
+  width: 10.5rem;
+  padding: 0.4rem 0.6rem;
+  border: 1px solid var(--ink);
+  border-radius: 0;
+  background: var(--paper);
+  color: var(--ink);
+  font-family: var(--terminal);
+  font-weight: 700;
+  font-size: 1rem;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.timer-post__name:focus-visible {
+  outline: 1px solid var(--muted);
+  outline-offset: 3px;
+}
+
+/* --- panels -------------------------------------------------------------- */
+
+.timer-panels {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 2rem 3rem;
+  align-items: start;
+}
+
+.timer-h {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  margin: 0 0 0.9rem;
+  padding-bottom: 0.45rem;
+  border-bottom: 1px solid var(--ink);
+  font-family: var(--display);
+  font-weight: 400;
+  font-size: 1.6rem;
+  line-height: 1;
+  text-transform: uppercase;
+}
+
+.timer-stats {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 0.5rem;
+  margin: 0 0 1rem;
+}
+
+.timer-stats dt {
+  font-family: var(--terminal);
+  font-weight: 700;
+  font-size: 0.66rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.timer-stats dd {
+  margin: 0.15rem 0 0;
+  font-family: var(--terminal);
+  font-weight: 700;
+  font-size: clamp(1rem, 2vw, 1.25rem);
+}
+
+.timer-list {
+  list-style: none;
+  margin: 0 0 1rem;
+  padding: 0;
+  max-height: 22rem;
+  overflow-y: auto;
+  scrollbar-width: thin;
+}
+
+.timer-list--board {
+  max-height: none;
+}
+
+.timer-row {
+  display: grid;
+  grid-template-columns: 2.4rem 1fr auto;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.35rem 0.4rem;
+  border-bottom: 1px dashed rgba(25, 22, 17, 0.22);
+  font-family: var(--terminal);
+  font-weight: 700;
+  font-size: 0.95rem;
+}
+
+.timer-list--board .timer-row {
+  grid-template-columns: 2.4rem 1fr auto 4.2rem;
+}
+
+.timer-row__n {
+  color: var(--muted);
+}
+
+.timer-row__name {
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.timer-row__date {
+  color: var(--muted);
+  font-size: 0.72rem;
+  letter-spacing: 0.06em;
+  text-align: right;
+  text-transform: uppercase;
+}
+
+.timer-row--best .timer-row__time::after {
+  content: " PB";
+  font-size: 0.66rem;
+  letter-spacing: 0.08em;
+  color: var(--muted);
+}
+
+.timer-row--you {
+  background: var(--ink);
+  color: var(--paper);
+}
+
+.timer-row--you .timer-row__n,
+.timer-row--you .timer-row__date {
+  color: var(--paper);
+}
+
+.timer-list--board .timer-row:first-child .timer-row__time {
+  font-size: 1.1rem;
+}
+
+.timer-row__del {
+  padding: 0 0.35rem;
+  background: none;
+  border: 0;
+  cursor: pointer;
+  font: inherit;
+  color: var(--muted);
+}
+
+.timer-row__del:hover,
+.timer-row__del:focus-visible {
+  color: #b3261e;
+}
+
+.timer-empty {
+  margin: 0 0 1rem;
+  font-family: var(--terminal);
+  font-weight: 700;
+  font-size: 0.72rem;
+  letter-spacing: 0.08em;
+  color: var(--muted);
+}
+
+/* --- small screens ------------------------------------------------------- */
+
+@media (max-width: 700px) {
+  .timer-panels {
+    grid-template-columns: 1fr;
+  }
+
+  .timer-scramble {
+    grid-template-columns: 1fr auto;
+  }
+
+  .timer-scramble > .cube-btn {
+    grid-column: 1 / -1;
+    justify-self: start;
+  }
+
+  /* The cube page hides labels on phones; this one says how to hold the cube. */
+  .timer-scramble .cube-label {
+    display: inline;
+  }
+}
+
+@media (max-width: 420px) {
+  .timer-stats {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .timer-page > *,
+  .timer-clock {
+    transition: none;
+  }
+}

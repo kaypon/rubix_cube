@@ -1,0 +1,58 @@
+<!doctype html>
+<html lang="en" class="timer-doc">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="theme-color" content="#f2f2f0" />
+    <title>CUBE TIMER — Kevin van der Poll</title>
+    <meta name="description" content="Time your Rubik's cube solves and try for the top 10." />
+    <link rel="icon" href="/favicon.ico" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Archivo+Black&display=swap" rel="stylesheet" />
+  </head>
+  <body>
+    <main class="timer-page" id="page">
+      <header class="timer-top">
+        <a class="cube-back" href="/">[← cube]</a>
+        <h1 class="cube-title"><span class="cube-title__slash">/</span>TIMER</h1>
+      </header>
+
+      <section class="timer-scramble" aria-labelledby="scramble-label">
+        <div class="timer-scramble__text">
+          <span class="cube-label" id="scramble-label">Scramble: white on top, green facing you</span>
+          <p class="timer-scramble__moves" id="scramble"></p>
+        </div>
+        <div class="timer-net" id="net" role="img" aria-label="What the cube looks like after the scramble"></div>
+        <button type="button" class="cube-btn cube-btn--sm" id="new-scramble">New scramble</button>
+      </section>
+
+      <section class="timer-pad" id="pad" aria-label="Timer">
+        <output class="timer-clock" id="clock" aria-live="off">0.00</output>
+        <p class="cube-hint" id="timer-hint" aria-live="polite"></p>
+        <form class="timer-post" id="post" hidden>
+          <label class="timer-post__label" for="name">Top 10! Name</label>
+          <input class="timer-post__name" id="name" name="board-name" maxlength="12" autocomplete="off" spellcheck="false" required data-1p-ignore data-lpignore="true" data-bwignore data-form-type="other" />
+          <button type="submit" class="cube-btn cube-btn--sm cube-btn--primary">Post</button>
+          <button type="button" class="cube-btn cube-btn--sm" id="skip">Skip</button>
+        </form>
+      </section>
+
+      <section class="timer-panels">
+        <div class="timer-panel">
+          <h2 class="timer-h">Your times</h2>
+          <dl class="timer-stats" id="stats"></dl>
+          <ol class="timer-list" id="history" aria-label="Your solves, newest first"></ol>
+          <p class="timer-empty" id="history-empty">[ NO SOLVES YET ]</p>
+          <button type="button" class="cube-btn cube-btn--sm" id="clear-times" hidden>Clear all</button>
+        </div>
+        <div class="timer-panel">
+          <h2 class="timer-h">Top 10 <span class="cube-label">Everyone</span></h2>
+          <ol class="timer-list timer-list--board" id="board" aria-label="Top 10, fastest first"></ol>
+          <p class="timer-empty" id="board-note">[ LOADING ]</p>
+        </div>
+      </section>
+    </main>
+    <script type="module" src="/src/timer/main.ts"></script>
+  </body>
+</html>

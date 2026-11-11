@@ -51,7 +51,8 @@ body {
 }
 
 /* Same grain recipe as .spin-page::before / .cables-stage::before. */
-.cube-page::before {
+.cube-page::before,
+.timer-page::before {
   content: "";
   position: fixed;
   inset: 0;
@@ -159,6 +160,8 @@ body {
 /* --- buttons (same voice as .spin-pattern) ------------------------------- */
 
 .cube-btn {
+  display: inline-block;
+  text-decoration: none;
   background: var(--paper);
   cursor: pointer;
   font-family: var(--terminal);
@@ -257,6 +260,15 @@ body {
 
 .cube-hint--win {
   color: var(--ink);
+}
+
+/* A link that couldn't be copied: shown as-is so it can be selected. */
+.cube-hint--raw {
+  color: var(--ink);
+  text-transform: none;
+  letter-spacing: 0;
+  word-break: break-all;
+  user-select: all;
 }
 
 .cube-controls,

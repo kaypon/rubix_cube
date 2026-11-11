@@ -14,16 +14,17 @@ import { RenderPass } from "three/addons/postprocessing/RenderPass.js";
 import { HalftonePass } from "three/addons/postprocessing/HalftonePass.js";
 import { OutputPass } from "three/addons/postprocessing/OutputPass.js";
 
-import { parseMove, nameTurn, type Axis } from "./notation.ts";
+import { parseMove, nameTurn, frameFromVectors, remapMove, type Axis, type ViewFrame } from "./notation.ts";
 import { faceletIndex, UNPAINTED, type Vec3 } from "./facelets.ts";
 import { AXIS_INDEX } from "./rotate.ts";
 import { Confetti } from "../fx/confetti.ts";
 import { createSkins, outlineMaterial, studioScene, type Skin, type SkinName } from "./skins.ts";
+import { STICKER_HEX } from "./colors.ts";
 
 // Ink + paper from kevs_site, plus printed-ink takes on the six cube colours.
 export const PAPER = 0xf2f2f0;
 const INK = 0x191611;
-export const STICKER_HEX = [0xf4f3ee, 0xd3262c, 0x16965a, 0xf5c518, 0xf0761b, 0x1f4cc2];
+export { STICKER_HEX };
 const BLANK_HEX = 0x8c8273;
 
 const FLOOR_Y = -2.35;
@@ -175,6 +176,18 @@ export class CubeView {
   private tiltVel = new THREE.Vector3();
   private spin = { from: 0, t: 1, duration: 1.4 };
 
+  // Looking around turns the cube itself (not the camera), so it can go any
+  // way up while the light and its shadow stay put.
+  private viewQuat = new THREE.Quaternion();
+  /** Spin left over after a flick, in px/s of drag. */
+  private viewVel = new THREE.Vector2();
+  private upright: { from: THREE.Quaternion; t: number; done: () => void } | null = null;
+  private look: null | { pointerId: number; x: number; y: number; lastT: number } = null;
+  private tmpQ = new THREE.Quaternion();
+  private tmpQ2 = new THREE.Quaternion();
+  private tmpV = new THREE.Vector3();
+  private tmpE = new THREE.Euler();
+
   private drag: null | {
     pointerId: number;
     startX: number;
@@ -260,7 +273,9 @@ export class CubeView {
     this.confetti = new Confetti(this.scene, STICKER_HEX, FLOOR_Y);
 
     this.camera.position.set(5.6, 4.6, 7.4);
+    // OrbitControls is kept for zoom (wheel, pinch) only; rotation is ours.
     this.controls = new OrbitControls(this.camera, this.canvas);
+    this.controls.enableRotate = false;
     this.controls.enablePan = false;
     this.controls.enableZoom = this.opts.interactive;
     this.controls.enableDamping = true;
@@ -430,6 +445,17 @@ export class CubeView {
       this.setStickerColor(s, UNPAINTED);
       // Ripple outward from the top: each sticker pops after a short delay.
       s.userData.pop = -(0.02 + ((s.userData.cubie.userData.coord[1] * -1 + 1) * 0.09) + (i % 3) * 0.015);
+    });
+  }
+
+  /** Show a given state (54 colour ids, facelet order) on a cube at rest. */
+  setColors(colors: number[]) {
+    this.resetInstant();
+    this.stickers.forEach((s, i) => {
+      const c = colors[this.stickerFacelet(s)];
+      if (c === s.userData.color) return;
+      this.setStickerColor(s, c);
+      s.userData.pop = -(0.02 + (i % 9) * 0.02);
     });
   }
 
@@ -718,14 +744,51 @@ export class CubeView {
     this.controls.target.set(0, -0.6, 0);
   }
 
+  /** Ease the cube back to white on top, green facing you. */
+  uprightView(): Promise<void> {
+    this.viewVel.set(0, 0);
+    this.upright?.done();
+    if (this.reducedMotion || this.viewQuat.angleTo(this.tmpQ.identity()) < 1e-3) {
+      this.viewQuat.identity();
+      this.upright = null;
+      return Promise.resolve();
+    }
+    return new Promise((done) => (this.upright = { from: this.viewQuat.clone(), t: 0, done }));
+  }
+
+  /** Which cube axes currently point screen-up, screen-right and at you. */
+  viewFrame(): ViewFrame {
+    const inv = this.tmpQ.copy(this.viewQuat).invert();
+    const dir = (x: number, y: number, z: number): [number, number, number] => {
+      const v = this.tmpV.set(x, y, z).applyQuaternion(this.camera.quaternion).applyQuaternion(inv);
+      return [v.x, v.y, v.z];
+    };
+    return frameFromVectors(dir(0, 1, 0), dir(1, 0, 0), dir(0, 0, 1));
+  }
+
+  /** A move named as you see it (U = whatever is on top now) in the cube's own notation. */
+  relativeMove(name: string): string {
+    return remapMove(name, this.viewFrame());
+  }
+
+  /** Turn the cube by a drag of (dx, dy) px about the screen's up and right axes. */
+  private rotateView(dx: number, dy: number) {
+    const k = (2 * Math.PI * 0.7) / Math.max(1, this.canvas.clientHeight);
+    const up = this.tmpV.set(0, 1, 0).applyQuaternion(this.camera.quaternion);
+    this.tmpQ.setFromAxisAngle(up, dx * k);
+    const right = this.tmpV.set(1, 0, 0).applyQuaternion(this.camera.quaternion);
+    this.tmpQ2.setFromAxisAngle(right, dy * k);
+    this.viewQuat.premultiply(this.tmpQ).premultiply(this.tmpQ2).normalize();
+  }
+
   // --- input --------------------------------------------------------------
 
-  private pointerNdc(e: PointerEvent): THREE.Vector2 {
+  private pointerNdc(e: MouseEvent): THREE.Vector2 {
     const r = this.canvas.getBoundingClientRect();
     return new THREE.Vector2(((e.clientX - r.left) / r.width) * 2 - 1, -((e.clientY - r.top) / r.height) * 2 + 1);
   }
 
-  private hit(e: PointerEvent): THREE.Intersection | null {
+  private hit(e: MouseEvent): THREE.Intersection | null {
     this.raycaster.setFromCamera(this.pointerNdc(e), this.camera);
     return this.raycaster.intersectObjects(this.hitTargets, false)[0] ?? null;
   }
@@ -741,9 +804,19 @@ export class CubeView {
     this.host.addEventListener(
       "pointerdown",
       (e) => {
+        // A second finger means pinch-zoom: stop looking around.
+        if (this.look && e.pointerId !== this.look.pointerId) this.look = null;
         if (e.target !== this.canvas || this.drag || !e.isPrimary) return;
         const hit = this.flights.size ? null : this.hit(e);
-        if (!hit) return;
+        if (!hit) {
+          this.look = { pointerId: e.pointerId, x: e.clientX, y: e.clientY, lastT: performance.now() };
+          this.viewVel.set(0, 0);
+          if (this.upright) {
+            this.upright.done();
+            this.upright = null;
+          }
+          return;
+        }
         this.controls.enabled = false;
         if (this.paintMode) {
           this.painting = e.pointerId;
@@ -776,17 +849,41 @@ export class CubeView {
         if (hit) this.paintAt(hit);
         return;
       }
+      if (this.look && this.look.pointerId === e.pointerId) {
+        const l = this.look;
+        const dx = e.clientX - l.x;
+        const dy = e.clientY - l.y;
+        const now = performance.now();
+        const dt = Math.max(1, now - l.lastT) / 1000;
+        this.viewVel.set(dx / dt, dy / dt).multiplyScalar(0.5).addScaledVector(this.viewVel, 0.5);
+        this.rotateView(dx, dy);
+        l.x = e.clientX;
+        l.y = e.clientY;
+        l.lastT = now;
+        return;
+      }
       if (this.drag && this.drag.pointerId === e.pointerId) this.dragMove(e);
       else if (e.target === this.canvas && !this.drag) this.hover(e);
     });
 
     const end = (e: PointerEvent) => {
+      if (this.look && this.look.pointerId === e.pointerId) {
+        // Only a drag that was still moving when you let go keeps spinning.
+        if (e.type === "pointercancel" || performance.now() - this.look.lastT > 80) this.viewVel.set(0, 0);
+        else this.viewVel.clampLength(0, 1600);
+        this.look = null;
+      }
       if (this.painting === e.pointerId) this.painting = null;
       if (this.drag && this.drag.pointerId === e.pointerId) this.dragEnd(e.type === "pointercancel");
       this.controls.enabled = true;
     };
     window.addEventListener("pointerup", end);
     window.addEventListener("pointercancel", end);
+
+    // Lost? Double-click (or double-tap) off the cube to stand it back up.
+    this.canvas.addEventListener("dblclick", (e) => {
+      if (!this.hit(e)) this.uprightView();
+    });
   }
 
   private hover(e: PointerEvent) {
@@ -924,7 +1021,28 @@ export class CubeView {
     this.tilt.addScaledVector(this.tiltVel, dt);
     if (this.spin.t < 1) this.spin.t = Math.min(1, this.spin.t + dt / this.spin.duration);
     const spinY = this.spin.t < 1 ? easeInOutCubic(this.spin.t) * Math.PI * 2 : 0;
-    this.root.rotation.set(this.tilt.x * 0.12, spinY + this.tilt.y * 0.12, this.tilt.z * 0.12);
+
+    if (this.upright) {
+      const u = this.upright;
+      u.t = Math.min(1, u.t + dt / 0.7);
+      this.viewQuat.slerpQuaternions(u.from, this.tmpQ.identity(), easeInOutCubic(u.t));
+      if (u.t >= 1) {
+        this.viewQuat.identity();
+        this.upright = null;
+        u.done();
+      }
+    } else if (!this.look && this.viewVel.lengthSq() > 1) {
+      this.rotateView(this.viewVel.x * dt, this.viewVel.y * dt);
+      this.viewVel.multiplyScalar(Math.exp(-dt * 6));
+    }
+
+    // World-vertical celebration spin, then where you've turned it, then the
+    // springy tilt from turns (in the cube's own axes).
+    const tiltQ = this.tmpQ2.setFromEuler(this.tmpE.set(this.tilt.x * 0.12, this.tilt.y * 0.12, this.tilt.z * 0.12));
+    this.root.quaternion
+      .setFromAxisAngle(AXIS_VEC.y, spinY)
+      .multiply(this.viewQuat)
+      .multiply(tiltQ);
     this.root.position.y = this.reducedMotion ? 0 : Math.sin(this.time * 1.2) * 0.06;
 
     for (const s of this.stickers) {
