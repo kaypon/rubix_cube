@@ -9,25 +9,38 @@
 
 import { createHash, randomBytes } from "node:crypto";
 import { Redis } from "@upstash/redis";
-import { BOARD_SIZE, cleanName, encodeMember, entriesFromRange, keyPrefix, validMs } from "./_board.js";
+import { BOARD_SIZE, addressBucket, cleanName, encodeMember, entriesFromRange, keyPrefix, validMs } from "./_board.js";
 
 const PREFIX = keyPrefix(process.env.VERCEL_ENV);
 const TOP_KEY = `${PREFIX}top`;
 const POSTS_PER_WINDOW = 5;
 const WINDOW_SEC = 10 * 60;
 const MONTHLY_CAP = 3000;
+/** Across everyone, so one burst from many addresses can't drain the month. */
+const POSTS_PER_MINUTE = 20;
 const MAX_BODY = 512;
 
 /**
  * Runs inside Redis via EVAL (Redis's server-side Lua). The script is a fixed
  * constant; keys and args are built here, never taken from the request.
- * Atomic: per-address limit, monthly cap, add, trim to the top N, rank.
- * Returns the new 0-based rank, -1 throttled, -2 month full, -3 didn't make it.
+ * Atomic, in this order: per-address limit; does the time beat 10th place
+ * (if not, stop before any shared counter moves); per-minute and monthly
+ * caps; add, trim to the top N, rank.
+ * Returns the new 0-based rank, -1 throttled, -2 month full, -3 didn't make
+ * it, -4 too busy this minute.
  */
 const POST_SCRIPT = `
 local n = redis.call("INCR", KEYS[1])
 if n == 1 then redis.call("EXPIRE", KEYS[1], tonumber(ARGV[1])) end
 if n > tonumber(ARGV[2]) then return -1 end
+local size = tonumber(ARGV[6])
+if redis.call("ZCARD", KEYS[3]) >= size then
+  local last = redis.call("ZRANGE", KEYS[3], size - 1, size - 1, "WITHSCORES")
+  if last[2] and tonumber(ARGV[4]) >= tonumber(last[2]) then return -3 end
+end
+local minute = redis.call("INCR", KEYS[4])
+if minute == 1 then redis.call("EXPIRE", KEYS[4], 120) end
+if minute > tonumber(ARGV[7]) then return -4 end
 local month = redis.call("INCR", KEYS[2])
 if month == 1 then redis.call("EXPIRE", KEYS[2], 3456000) end
 if month > tonumber(ARGV[3]) then return -2 end
@@ -96,9 +109,9 @@ function sameOrigin(request) {
 
 /** @param {Request} request */
 function addressKey(request) {
-  const ip = (request.headers.get("x-forwarded-for") ?? "").split(",")[0].trim() || "unknown";
+  const ip = (request.headers.get("x-forwarded-for") ?? "").split(",")[0];
   // Hashed so no raw addresses sit in Redis.
-  const hash = createHash("sha256").update(`cube-board:${ip}`).digest("hex").slice(0, 24);
+  const hash = createHash("sha256").update(`cube-board:${addressBucket(ip)}`).digest("hex").slice(0, 24);
   return `${PREFIX}rl:${hash}`;
 }
 
@@ -126,16 +139,26 @@ async function postScore(request) {
   const now = Date.now();
   const member = encodeMember(name, now, randomBytes(4).toString("hex"));
   const monthKey = `${PREFIX}posts:${new Date(now).toISOString().slice(0, 7)}`;
+  const minuteKey = `${PREFIX}posts:m:${Math.floor(now / 60_000)}`;
   try {
     const result = Number(
       await redis.eval(
         POST_SCRIPT,
-        [addressKey(request), monthKey, TOP_KEY],
-        [String(WINDOW_SEC), String(POSTS_PER_WINDOW), String(MONTHLY_CAP), String(ms), member, String(BOARD_SIZE)],
+        [addressKey(request), monthKey, TOP_KEY, minuteKey],
+        [
+          String(WINDOW_SEC),
+          String(POSTS_PER_WINDOW),
+          String(MONTHLY_CAP),
+          String(ms),
+          member,
+          String(BOARD_SIZE),
+          String(POSTS_PER_MINUTE),
+        ],
       ),
     );
     if (result === -1) return json({ error: "Easy. Too many posts, try again in a few minutes." }, 429);
     if (result === -2) return json({ error: "The board's full up for this month." }, 503);
+    if (result === -4) return json({ error: "The board's busy. Try again in a minute." }, 429);
     const top = await readTop(redis);
     return json({ top, rank: result >= 0 ? result + 1 : null });
   } catch (err) {

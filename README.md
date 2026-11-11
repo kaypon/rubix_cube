@@ -72,7 +72,8 @@ Top 10 in a Redis sorted set (score = ms). The Redis is one-light-day's free Ups
 database, connected to this project too; everything here lives under `cube:` (production)
 or `cube-dev:` (local and previews), so neither app touches the other's keys.
 The timer is for a real cube, so nothing can prove a solve happened. The API refuses times
-under 3 s or over an hour, takes 5 posts per address per 10 minutes and 3000 a month,
+under 3 s or over an hour, takes 5 posts per address (IPv6: per /64) per 10 minutes, 20 a minute and 3000 a month
+(only times that would make the board count toward those last two),
 only accepts posts from its own page, and keeps names to 12 plain characters.
 Anything rude: `npm run board -- remove <rank>`.
 

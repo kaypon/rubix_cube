@@ -86,6 +86,25 @@ export function entriesFromRange(flat) {
 }
 
 /**
+ * Who the per-person post limit applies to. IPv4 is the address itself;
+ * IPv6 is its /64, since one connection usually gets a whole /64 and could
+ * otherwise hop addresses to dodge the limit.
+ * @param {string} ip
+ */
+export function addressBucket(ip) {
+  const v = ip.trim().toLowerCase().replace(/%.*$/, "");
+  if (!v.includes(":")) return v || "unknown";
+  const mapped = /^::ffff:(\d+\.\d+\.\d+\.\d+)$/.exec(v);
+  if (mapped) return mapped[1];
+  const [head, tail] = v.split("::");
+  const left = head ? head.split(":") : [];
+  const right = tail === undefined ? [] : tail ? tail.split(":") : [];
+  const groups = tail === undefined ? left : [...left, ...Array(Math.max(0, 8 - left.length - right.length)).fill("0"), ...right];
+  const prefix = groups.slice(0, 4).map((g) => (parseInt(g, 16) || 0).toString(16));
+  return `${prefix.join(":")}::/64`;
+}
+
+/**
  * Keys live next to one-light-day's in a shared Redis, so everything is
  * prefixed. Only production touches the real board; local runs and
  * previews get their own.

@@ -24,6 +24,7 @@ import {
   decodeMember,
   entriesFromRange,
   keyPrefix,
+  addressBucket,
 } from "../api/_board.js";
 import { faceletPlacement, faceletIndex, checkCube, type Vec3 } from "../src/cube/facelets.ts";
 import { rotateVec, AXIS_INDEX } from "../src/cube/rotate.ts";
@@ -235,6 +236,18 @@ test("board entries survive the trip through Redis members", () => {
   assert.equal(keyPrefix("production"), "cube:");
   assert.equal(keyPrefix("preview"), "cube-dev:");
   assert.equal(keyPrefix(undefined), "cube-dev:");
+});
+
+test("rate limits group IPv6 by /64, IPv4 by address", () => {
+  assert.equal(addressBucket(" 203.0.113.7 "), "203.0.113.7");
+  assert.equal(addressBucket("::ffff:203.0.113.7"), "203.0.113.7");
+  assert.equal(addressBucket("2001:db8:85a3:12:aaaa:bbbb:cccc:dddd"), "2001:db8:85a3:12::/64");
+  assert.equal(addressBucket("2001:DB8:85A3:0012::1"), "2001:db8:85a3:12::/64");
+  assert.equal(addressBucket("2001:db8::1"), "2001:db8:0:0::/64");
+  assert.equal(addressBucket("2001:db8::"), addressBucket("2001:db8:0:0:ffff::1"));
+  assert.equal(addressBucket("fe80::1%en0"), "fe80:0:0:0::/64");
+  assert.equal(addressBucket("::1"), "0:0:0:0::/64");
+  assert.equal(addressBucket(""), "unknown");
 });
 
 test("a shared cube's mix (the solution undone) rebuilds it from solved", () => {
